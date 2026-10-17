@@ -6,12 +6,13 @@
 #
 # Do NOT rename the class — the harness looks for 'StatevectorSimulator' exactly.
 
-import sys
-from pathlib import Path
+# import sys
+# from pathlib import Path
 import numpy as np
+from backends._statevector import StateVector
 
 # Adjust this path if your compiled extension lands elsewhere
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src' / 'statevector'))
+# sys.path.insert(0, str(Path(__file__).parent.parent / 'src' / 'statevector'))
 
 from simulator import QuantumSimulator, UnsupportedOperationError  # noqa: F401
 
@@ -20,6 +21,7 @@ class StatevectorSimulator(QuantumSimulator):
     def __init__(self):
         self.t_n_qubits = 0
         self._state = None
+        self._cpp=StateVector()
 
     def initialize(self, n: int) -> None:
         if not isinstance(n, (int, np.integer)) or isinstance(n, bool):
@@ -27,15 +29,18 @@ class StatevectorSimulator(QuantumSimulator):
 
         if n<1:
             raise ValueError("Number of qubits must be at least 1.")
-        self.t_n_qubits=n
-        self._state=np.zeros((1<<self.t_n_qubits), dtype=np.complex128)
-        #To simulate the |0> state as the starting state
-        self._state[0]=1.0 + 0.0j
+        self._cpp.initialize(int(n))
+        self.t_n_qubits = int(n)
+        self._state = None
 
     #helper functions
     def f_check_initialization(self):
-        if self._state is None:
+        if self.t_n_qubits == 0:
             raise RuntimeError("Simulator is not initialized")
+
+    def f_current_state(self):
+        self.f_check_initialization()
+        return np.asarray(self._cpp.statevector(), dtype=np.complex128)
 
     def f_validate_qubit(self, qubit):
         self.f_check_initialization()
@@ -74,76 +79,44 @@ class StatevectorSimulator(QuantumSimulator):
 
     def apply_1q_gate(self, gate: str, qubit: int, **params) -> None:
         self.f_validate_qubit(qubit)
-        U = self.f_single_gate_matrix(gate, params)
 
-        mask = 1 << qubit
-        indices = np.arange(len(self._state))
-        zero_indices = indices[(indices & mask) == 0]
-        one_indices = zero_indices | mask
+        # Preserve Python-side gate and parameter validation.
+        self.f_single_gate_matrix(gate, params)
 
-        a0 = self._state[zero_indices].copy()
-        a1 = self._state[one_indices].copy()
-
-        self._state[zero_indices] = (
-            U[0, 0] * a0 + U[0, 1] * a1
-        )
-        self._state[one_indices] = (
-            U[1, 0] * a0 + U[1, 1] * a1
+        self._cpp.apply_1q_gate(
+            gate,
+            int(qubit),
+            float(params.get("theta", 0.0)),
+            float(params.get("phi", 0.0)),
+            float(params.get("lam", 0.0)),
         )
 
     def apply_2q_gate(self, gate: str, ctrl: int, tgt: int, **params) -> None:
         self.f_validate_qubit(ctrl)
         self.f_validate_qubit(tgt)
+
         if ctrl == tgt:
             raise ValueError("Control and target qubits must be different.")
-        ctrl_mask = 1<<ctrl
-        tgt_mask = 1<<tgt
-        if gate == "CNOT":
-            for i in range(len(self._state)):
-                if (i&ctrl_mask) and not(i&tgt_mask):
-                    j=(i|tgt_mask)
-                    self._state[i], self._state[j] = self._state[j], self._state[i]
-        elif gate == "CZ":
-            for i in range(len(self._state)):
-                if (i&ctrl_mask) and (i&tgt_mask):
-                    self._state[i] *= -1
-        elif gate == "SWAP":
-            for i in range(len(self._state)):
-                if not (i & ctrl_mask) and (i & tgt_mask):
-                    j = i ^ ctrl_mask ^ tgt_mask
-                    self._state[i], self._state[j] = (
-                        self._state[j], self._state[i]
-                    )
-        elif gate == "CU":
-            U=self.f_single_gate_matrix("U", params)
-            for i in range(len(self._state)):
-                if(i&ctrl_mask) and not (i&tgt_mask):
-                    j=(i|tgt_mask)
-                    original_amp=self._state[i]
-                    paired_amp=self._state[j]
-                    self._state[i]=U[0,0]*original_amp + U[0,1]*paired_amp
-                    self._state[j]=U[1,0]*original_amp + U[1,1]*paired_amp
-        else:
+
+        supported_gates = {"CNOT", "CZ", "SWAP", "CU"}
+        if gate not in supported_gates:
             raise UnsupportedOperationError(f"Unsupported 2-qubit gate: {gate}")
 
+        if gate == "CU":
+            self.f_single_gate_matrix("U", params)
+
+        self._cpp.apply_2q_gate(
+            gate,
+            int(ctrl),
+            int(tgt),
+            float(params.get("theta", 0.0)),
+            float(params.get("phi", 0.0)),
+            float(params.get("lam", 0.0)),
+        )
 
     def measure(self, qubit: int) -> int:
         self.f_validate_qubit(qubit)
-        mask=(1<<qubit)
-        indices = np.arange(len(self._state))
-        probs = np.abs(self._state)**2
-        p1=float(probs[(indices&mask)!=0].sum())
-        p1=min(1.0, max(0.0, p1))
-        p0=1.0-p1
-        outcome = int(np.random.random()<p1)
-        selected_prob = p1 if outcome else p0
-        if selected_prob<=0.0:
-            raise RuntimeError("Measurement probability is zero, cannot collapse state.")
-        keep = ((indices&mask)!=0) == bool(outcome)
-        self._state[~keep] = 0.0
-        self._state /= np.sqrt(selected_prob)
-
-        return outcome
+        return int(self._cpp.measure(int(qubit)))
 
     def sample(self, shots: int) -> dict:
         self.f_check_initialization()
@@ -151,9 +124,10 @@ class StatevectorSimulator(QuantumSimulator):
             raise TypeError("Number of shots must be an integer.")
         if shots<1:
             raise ValueError("Number of shots must be at least 1.")
-        probs = np.abs(self._state)**2
+        state = self.f_current_state()
+        probs = np.abs(state)**2
         probs /= probs.sum()
-        outcomes = np.random.choice(len(self._state), size=shots, p=probs)
+        outcomes = np.random.choice(len(state), size=shots, p=probs)
         counts = {}
         for outcome in outcomes:
             bitstring = "".join(
@@ -171,8 +145,9 @@ class StatevectorSimulator(QuantumSimulator):
             raise ValueError(f"Pauli string length must match number of qubits ({self.t_n_qubits}).")
         if any(p not in "IXYZ" for p in pauli_string):
             raise ValueError("Pauli string can only contain 'I', 'X', 'Y', 'Z'.")
+        state = self.f_current_state()
         result=0.0+0.0j
-        for i, amplitude in enumerate(self._state):
+        for i, amplitude in enumerate(state):
             target = i
             phase = 1.0 + 0.0j
 
@@ -195,7 +170,7 @@ class StatevectorSimulator(QuantumSimulator):
                         phase *= -1
 
             result += (
-                np.conjugate(self._state[target])
+                np.conjugate(state[target])
                 * phase
                 * amplitude
             )
@@ -214,5 +189,4 @@ class StatevectorSimulator(QuantumSimulator):
 
     @property
     def statevector(self) -> np.ndarray:
-        self.f_check_initialization()
-        return self._state.copy()
+        return self.f_current_state().copy()
