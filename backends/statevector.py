@@ -129,7 +129,8 @@ class StatevectorSimulator(QuantumSimulator):
         )
 
     def measure(self, qubit: int) -> int:
-        raise NotImplementedError
+        self.f_validate_qubit(qubit)
+        return int(self._cpp.measure(int(qubit)))
 
     def sample(self, shots: int) -> dict[str, int]:
         self.f_check_initialization()
