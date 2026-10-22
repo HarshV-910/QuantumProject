@@ -173,3 +173,103 @@ class MPSSimulator(QuantumSimulator):
 
         for q in range(left + 1, right): # revert swaping operation
             self._apply_adjacent_gate(q, q + 1, self._swap_matrix())
+
+
+    # --------------- measurement ------------------
+
+    def _projected_norm_squared(self, qubit: int, bit: int) -> float: # used for measurement
+        """Contract the norm network while fixing one qubit to 0 or 1."""
+        env = np.ones((1, 1), dtype=np.complex128)
+        for index, tensor in enumerate(self._tensors):
+            allowed = (bit,) if index == qubit else (0, 1)
+            next_env = np.zeros((tensor.shape[2], tensor.shape[2]), dtype=np.complex128)
+            for physical in allowed:
+                local = tensor[:, physical, :]
+                next_env += np.einsum(
+                    "ab,ai,bj->ij", env, local.conj(), local, optimize=True
+                )
+            env = next_env
+        return max(0.0, float(env[0, 0].real))
+
+    def measure(self, qubit: int) -> int: # measurement of P(|0>) and P(|1>) and Project physical index -> renormalize
+        """Measure one qubit, collapse the MPS, and return its bit."""
+        self._check_qubit(qubit)
+        p0 = self._projected_norm_squared(qubit, 0)
+        p1 = self._projected_norm_squared(qubit, 1)
+        total = p0 + p1
+        if total <= 0.0:
+            raise RuntimeError("Cannot measure a zero-norm quantum state")
+        p0 /= total
+        outcome = 0 if self._rng.random() < p0 else 1
+        probability = p0 if outcome == 0 else 1.0 - p0
+        if probability <= 1e-15:
+            outcome = 1 - outcome
+            probability = p0 if outcome == 0 else 1.0 - p0
+        tensor = self._tensors[qubit].copy()
+        tensor[:, 1 - outcome, :] = 0.0
+        # Normalise the post-measurement state.  Scaling one tensor scales the
+        # entire MPS by the same factor.
+        tensor /= math.sqrt(probability)
+        self._tensors[qubit] = tensor
+        return outcome
+
+    def sample(self, shots: int) -> dict:
+        """Return measurement counts without changing the original state."""
+        if not isinstance(shots, int) or shots < 0:
+            raise ValueError("shots must be a non-negative integer")
+        counts: dict[str, int] = {}
+        original = self._tensors
+        try:
+            for _ in range(shots):
+                # Copy the small tensor list so each shot begins from the same
+                # pre-measurement state and collapses independently.
+                self._tensors = [tensor.copy() for tensor in original]
+                bits = [str(self.measure(q)) for q in range(self._n)]
+                bitstring = "".join(bits)
+                counts[bitstring] = counts.get(bitstring, 0) + 1
+        finally:
+            self._tensors = original
+        return counts
+
+    
+    # --------------- statevector & expectation ------------------
+
+    def expectation(self, pauli_string: str) -> float:
+        """Compute <psi|P|psi> by contracting the MPS from left to right. ex: XZI"""
+        self._require_initialized()
+        if len(pauli_string) != self._n or any(ch not in _PAULI for ch in pauli_string):
+            raise ValueError(f"pauli_string must have length {self._n} and contain only I, X, Y, Z")
+        env = np.ones((1, 1), dtype=np.complex128) # env contains the overlap accumulated up to the previous bond.
+        for tensor, symbol in zip(self._tensors, pauli_string):
+            operator = _PAULI[symbol]
+            env = np.einsum(
+                "ab,asr,st,btd->rd",
+                env,
+                tensor.conj(),
+                operator,
+                tensor,
+                optimize=True,
+            )
+        value = env[0, 0]
+        return float(value.real) # Pauli string is Hermitian, so its expectation is real.
+
+    @property
+    def n_qubits(self) -> int: # how many qubits are there
+        return self._n
+
+    @property
+    def statevector(self) -> np.ndarray: # from n tensors and virtual bond(tensor dot), reconstruct(recover) 2^n statevector
+        """Materialize amplitudes for the instructor harness on small tests.
+
+        This is deliberately a property, not a get_statevector() method in the
+        common simulator API.  It should not be used inside the MPS hot path.
+        Tensor axes are ordered by qubit index, matching sample()'s bit strings.
+        """
+        self._require_initialized()
+        state = self._tensors[0][0, :, :]
+        for tensor in self._tensors[1:]:
+            state = np.tensordot(state, tensor, axes=([-1], [0]))
+        return np.asarray(state.reshape(-1), dtype=np.complex128)
+
+
+    
