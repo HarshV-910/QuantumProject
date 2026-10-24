@@ -1,0 +1,12 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Compiled C++ artifacts
+*.so
+*.o
