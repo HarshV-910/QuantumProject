@@ -45,7 +45,8 @@ public:
  std::string nodekey(int lev, Edge a, Edge b){ return std::to_string(lev)+"|"+edgekey(a)+"|"+edgekey(b); }
  Edge make(int lev, Edge lo, Edge hi){
   lo.w=clean(lo.w); hi.w=clean(hi.w);
-  if(std::abs(lo.w)<EPS) lo=zero_edge(); if(std::abs(hi.w)<EPS) hi=zero_edge();
+  if(std::abs(lo.w)<EPS) lo=zero_edge(); 
+  if(std::abs(hi.w)<EPS) hi=zero_edge();
   if(std::abs(lo.w)<EPS && std::abs(hi.w)<EPS) return zero_edge();
   C pivot=std::abs(lo.w)>=EPS?lo.w:hi.w;
   Edge a=std::abs(lo.w)>=EPS?Edge{clean(lo.w/pivot),lo.id}:zero_edge();
@@ -57,7 +58,8 @@ public:
  void initialize(){ nodes.assign(1,Node{}); unique.clear(); clear(); Edge e{C(1,0),0}; for(int q=0;q<n;q++) e=make(q,e,zero_edge()); root=e; }
  Edge child(Edge e, bool high){ if(std::abs(e.w)<EPS)return zero_edge(); if(!e.id)return high?zero_edge():e; Node x=nodes[e.id]; Edge c=high?x.hi:x.lo; return {e.w*c.w,c.id}; }
  Edge add(Edge a, Edge b){
-  if(std::abs(a.w)<EPS)return b; if(std::abs(b.w)<EPS)return a;
+  if(std::abs(a.w)<EPS)return b; 
+  if(std::abs(b.w)<EPS)return a;
   if(a.id==b.id){C s=clean(a.w+b.w); return std::abs(s)<EPS?zero_edge():Edge{s,a.id};}
   if(!a.id&&!b.id)return {clean(a.w+b.w),0};
   std::string key=edgekey(a)+"+"+edgekey(b); auto it=addcache.find(key); if(it!=addcache.end())return it->second;
@@ -69,7 +71,8 @@ public:
  }
  using M2=std::array<C,4>;
  Edge apply1(Edge e,int q,const M2&m){
-  if(std::abs(e.w)<EPS)return zero_edge(); if(!e.id)throw std::runtime_error("single-qubit gate reached terminal");
+  if(std::abs(e.w)<EPS)return zero_edge(); 
+  if(!e.id)throw std::runtime_error("single-qubit gate reached terminal");
   Node x=nodes[e.id]; std::string mk; for(C z:m)mk+=cq(z)+";";
   std::string key=std::to_string(e.id)+"/"+cq(e.w)+"/"+std::to_string(q)+"/"+mk;
   auto it=onecache.find(key); if(it!=onecache.end())return it->second;
