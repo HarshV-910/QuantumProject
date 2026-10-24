@@ -6,7 +6,6 @@ using standard 1D array row-major indexing.*/
 #include <algorithm>
 #include <complex>
 #include <new>
-#pragma once
 #include <complex>
 using namespace std;
 

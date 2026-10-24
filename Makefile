@@ -10,7 +10,7 @@ all: mps other-backends
 
 mps: $(MPS_LIB)
 
-$(MPS_LIB): $(MPS_SRC) $(MPS_DIR)/mps_kernels.hpp
+$(MPS_LIB): $(MPS_SRC)
 	$(CXX) $(CXXFLAGS) -shared -o $@ $(MPS_SRC)
 
 other-backends:

@@ -10,13 +10,52 @@
 # Do NOT rename the class — the harness looks for 'MPSSimulator' exactly.
 
 import sys
+import ctypes
+import math
 from pathlib import Path
-
-
-import math,numpy as np
 from typing import Any
+
+import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src' / 'mps'))
 from simulator import QuantumSimulator, UnsupportedOperationError  # noqa: F401
+
+# Load the compiled C++ MPS kernels from the project directory.
+_MPS_LIBRARY_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "src"
+    / "mps"
+    / "libmps_kernels.so"
+)
+
+if not _MPS_LIBRARY_PATH.is_file():
+    raise RuntimeError(
+        f"MPS C++ library not found at {_MPS_LIBRARY_PATH}. "
+        "Build it first by running 'make mps' from the project root."
+    )
+
+_mps_lib = ctypes.CDLL(str(_MPS_LIBRARY_PATH))
+
+# NumPy complex128 arrays are passed as pointers to contiguous memory.
+# C++ uses std::complex<double>; the functions receive only pointers,
+# so ctypes uses void pointers for these array arguments.
+_mps_lib.mps_apply_1q.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_void_p,
+]
+_mps_lib.mps_apply_1q.restype = ctypes.c_int
+
+_mps_lib.mps_apply_adjacent_2q.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+]
+_mps_lib.mps_apply_adjacent_2q.restype = ctypes.c_int
 
 _PAULI = {
     "I": np.array([[1, 0], [0, 1]], dtype=np.complex128),
@@ -43,7 +82,7 @@ class MPSSimulator(QuantumSimulator):
             self._tensors.append(tensor)
 
     # --------------- single qubit gate matrix ------------------
-    
+
     def _require_initialized(self) -> None:
         if self._n <= 0 or len(self._tensors) != self._n:
             raise RuntimeError("Call initialize(n) before using the simulator")
@@ -52,7 +91,7 @@ class MPSSimulator(QuantumSimulator):
             self._require_initialized()
             if not isinstance(qubit, int) or not 0 <= qubit < self._n:
                 raise ValueError(f"qubit index must be in [0, {self._n})")
-            
+
     @staticmethod
     def _single_gate_matrix(gate: str, params: dict[str, Any]) -> np.ndarray:  # X,Y,Z,S,T,I,H,U:random rotation
         s2 = 1.0 / math.sqrt(2.0)
@@ -79,14 +118,33 @@ class MPSSimulator(QuantumSimulator):
              [np.exp(1j * phi) * s, np.exp(1j * (phi + lam)) * c]],
             dtype=np.complex128,
         )
-    
-    def apply_1q_gate(self, gate: str, qubit: int, **params) -> None:
-        '''Tensor-matrix contraction (einsum)'''
-        self._check_qubit(qubit)
-        matrix = self._single_gate_matrix(gate, params)
 
-        # tensor[left, input_bit, right] -> tensor[left, output_bit, right]
-        self._tensors[qubit] = np.einsum("oi,lir->lor", matrix, self._tensors[qubit], optimize=True)
+
+    def apply_1q_gate(self, gate: str, qubit: int, **params) -> None:
+        """Apply a single-qubit gate using the compiled C++ kernel."""
+        self._check_qubit(qubit)
+        matrix = np.ascontiguousarray(
+            self._single_gate_matrix(gate, params),
+            dtype=np.complex128,
+        )
+
+        # C++ expects contiguous complex128 tensor storage.
+        tensor = np.ascontiguousarray(self._tensors[qubit])
+
+        status = _mps_lib.mps_apply_1q(
+            tensor.ctypes.data_as(ctypes.c_void_p),
+            tensor.shape[0],
+            tensor.shape[2],
+            matrix.ctypes.data_as(ctypes.c_void_p),
+        )
+
+        if status != 0:
+            raise RuntimeError(
+                f"C++ mps_apply_1q failed with status {status}"
+            )
+
+        self._tensors[qubit] = tensor
+
 
 # --------------- 2 qubit gate matrix ------------------
 
@@ -121,34 +179,72 @@ class MPSSimulator(QuantumSimulator):
         tensor = matrix.reshape(2, 2, 2, 2)
         return tensor.transpose(1, 0, 3, 2).reshape(4, 4)
 
-    def _apply_adjacent_gate(self, left: int, right: int, matrix: np.ndarray) -> None: # join tensors left and right and apply gate
-        """Apply a 4x4 gate to neighbouring MPS tensors using an exact SVD split."""
-        a = self._tensors[left]
-        b = self._tensors[right]
 
-        # Join the two tensors across their shared virtual bond: theta[l, q_left, q_right, r]
-        theta = np.einsum("lpm,mqr->lpqr", a, b, optimize=True)
-        gate_tensor = matrix.reshape(2, 2, 2, 2)  # out-left, out-right, in-left, in-right
-        theta = np.einsum("uvij,lijr->luvr", gate_tensor, theta, optimize=True)
+    def _apply_adjacent_gate(
+        self, left: int, right: int, matrix: np.ndarray
+    ) -> None:
+        """Apply a two-qubit gate in C++, then split the MPS using SVD."""
+        a = np.ascontiguousarray(self._tensors[left])
+        b = np.ascontiguousarray(self._tensors[right])
+        matrix = np.ascontiguousarray(matrix, dtype=np.complex128)
 
-        left_dim, right_dim = theta.shape[0], theta.shape[3]
-        matrix_view = theta.reshape(left_dim * 2, 2 * right_dim)
-        u, singular_values, vh = np.linalg.svd(matrix_view, full_matrices=False)
+        left_dim = a.shape[0]
+        shared_dim = a.shape[2]
+        right_dim = b.shape[2]
 
-        # Remove singular values that are zero up to floating-point precision.
+        # C++ returns the merged tensor with shape (left, 2, 2, right).
+        merged = np.empty(
+            (left_dim, 2, 2, right_dim),
+            dtype=np.complex128,
+        )
+
+        status = _mps_lib.mps_apply_adjacent_2q(
+            a.ctypes.data_as(ctypes.c_void_p),
+            left_dim,
+            shared_dim,
+            b.ctypes.data_as(ctypes.c_void_p),
+            right_dim,
+            matrix.ctypes.data_as(ctypes.c_void_p),
+            merged.ctypes.data_as(ctypes.c_void_p),
+        )
+
+        if status != 0:
+            raise RuntimeError(
+                "C++ mps_apply_adjacent_2q failed "
+                f"with status {status}"
+            )
+
+        # SVD remains in NumPy to split the merged tensor into two MPS tensors.
+        matrix_view = merged.reshape(left_dim * 2, 2 * right_dim)
+        u, singular_values, vh = np.linalg.svd(
+            matrix_view,
+            full_matrices=False,
+        )
+
+        # Remove only singular values indistinguishable from zero
+        # at floating-point precision.
         if singular_values.size:
-            cutoff = np.finfo(np.float64).eps * max(matrix_view.shape) * singular_values[0]
+            cutoff = (
+                np.finfo(np.float64).eps
+                * max(matrix_view.shape)
+                * singular_values[0]
+            )
             keep = singular_values > cutoff
+
             if not np.any(keep):
                 keep[0] = True
+
             u = u[:, keep]
             singular_values = singular_values[keep]
             vh = vh[keep, :]
+
         bond = len(singular_values)
-        new_left = u.reshape(left_dim, 2, bond)
-        new_right = (singular_values[:, None] * vh).reshape(bond, 2, right_dim)
-        self._tensors[left] = new_left
-        self._tensors[right] = new_right
+
+        self._tensors[left] = u.reshape(left_dim, 2, bond)
+        self._tensors[right] = (
+            singular_values[:, None] * vh
+        ).reshape(bond, 2, right_dim)
+
 
     def apply_2q_gate(self, gate: str, ctrl: int, tgt: int, **params) -> None:
         '''SWAPs to bring adjacent -> contract-> Gate -> SVD split'''
@@ -231,7 +327,7 @@ class MPSSimulator(QuantumSimulator):
             self._tensors = original
         return counts
 
-    
+
     # --------------- statevector & expectation ------------------
 
     def expectation(self, pauli_string: str) -> float:
@@ -270,6 +366,3 @@ class MPSSimulator(QuantumSimulator):
         for tensor in self._tensors[1:]:
             state = np.tensordot(state, tensor, axes=([-1], [0]))
         return np.asarray(state.reshape(-1), dtype=np.complex128)
-
-
-    
