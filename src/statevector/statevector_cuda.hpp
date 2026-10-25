@@ -9,7 +9,6 @@ class CudaStateVector {
 public:
     CudaStateVector();
     ~CudaStateVector();
-
     CudaStateVector(const CudaStateVector&) = delete;
     CudaStateVector& operator=(const CudaStateVector&) = delete;
 

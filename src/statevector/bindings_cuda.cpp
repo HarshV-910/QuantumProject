@@ -44,7 +44,6 @@ PYBIND11_MODULE(_statevector_cuda, m) {
             py::arg("phi") = 0.0,
             py::arg("lam") = 0.0
         )
-
         .def(
             "measure",
             &CudaStateVector::measure,

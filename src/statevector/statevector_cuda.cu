@@ -492,7 +492,6 @@ CudaStateVector::sample(int shots) {
     static thread_local std::mt19937_64 rng(
         std::random_device{}()
     );
-
     std::discrete_distribution<int> distribution(
         probabilities.begin(), probabilities.end()
     );
