@@ -6,7 +6,6 @@ using standard 1D array row-major indexing.*/
 #include <algorithm>
 #include <complex>
 #include <new>
-#include <complex>
 using namespace std;
 
 // one-qubit MPS tensor is stored as [left_bond, physical_bit, right_bond].
