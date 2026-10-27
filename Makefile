@@ -22,7 +22,7 @@ all: setup build
 # ------------------------------------------------------------
 
 setup:
-	$(PIP) install -r requirements.txt
+	$(PIP) install numpy scipy matplotlib qiskit qiskit-aer pybind11
 
 check:
 	$(PYTHON) -c "import numpy, scipy, matplotlib, qiskit, qiskit_aer, pybind11; print('Python dependencies OK')"
