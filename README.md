@@ -162,5 +162,3 @@ python benchmark.py --backend <name> --circuit <circuit> --n-max 40 --plot
 # Available circuits: ghz, qft, bv, qaoa_1d, near_clifford, random_universal
 # Available backends: statevector, stabilizer, mps, dd
 ```
-
-For the full specification see `project_spec.pdf` (posted on the course portal).
