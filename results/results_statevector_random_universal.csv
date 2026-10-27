@@ -1,0 +1,10 @@
+backend,circuit,n,time_s,mem_mb,qiskit_time_s
+statevector,random_universal,4,0.0026611629999706565,0.00072479248046875,nan
+statevector,random_universal,6,0.006624076999969475,0.0007476806640625,nan
+statevector,random_universal,8,0.010641895000048862,0.0006103515625,nan
+statevector,random_universal,10,0.016915141999902517,0.0006103515625,nan
+statevector,random_universal,12,0.02788866599996709,0.0006103515625,nan
+statevector,random_universal,14,0.035573759999920185,0.0006103515625,nan
+statevector,random_universal,16,0.05454443399992215,0.0006103515625,nan
+statevector,random_universal,18,0.14983813699996062,0.0006103515625,nan
+statevector,random_universal,20,0.5457046860000219,0.0006103515625,nan
