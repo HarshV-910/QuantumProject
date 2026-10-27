@@ -1,5 +1,5 @@
 # COL8422 Quantum Computing Systems — Part 1
-# Root Makefile: MPS, Statevector, Stabilizer, and DD backends
+# Build all backends with a single `make` command.
 
 PYTHON ?= python3
 CXX ?= g++
@@ -9,32 +9,33 @@ PIP := $(PYTHON) -m pip
 CXXFLAGS ?= -O3 -std=c++17 -Wall -Wextra -fPIC
 LDFLAGS ?= -shared
 
-# ============================================================
-# Default target
-# ============================================================
-
 .PHONY: all setup check
 .PHONY: mps stabilizer statevector dd cpu cuda
 .PHONY: test test-mps test-stabilizer test-statevector test-dd
 .PHONY: clean clean-mps clean-stabilizer clean-statevector clean-dd
-.PHONY: clean-statevector
 
-all: mps stabilizer statevector dd
+# Default: install dependencies, then build every backend.
+all: setup build
 
-# ============================================================
-# Environment setup and dependency checks
-# ============================================================
+# ------------------------------------------------------------
+# Python dependencies
+# ------------------------------------------------------------
 
 setup:
 	$(PIP) install -r requirements.txt
-	$(PIP) install pybind11
 
 check:
-	$(PYTHON) -c "import numpy, qiskit, qiskit_aer; print('Python dependencies OK')"
+	$(PYTHON) -c "import numpy, scipy, matplotlib, qiskit, qiskit_aer, pybind11; print('Python dependencies OK')"
 
-# ============================================================
-# MPS backend — Member C
-# ============================================================
+# ------------------------------------------------------------
+# Build all backends after setup
+# ------------------------------------------------------------
+
+build: mps stabilizer statevector dd
+
+# ------------------------------------------------------------
+# MPS backend
+# ------------------------------------------------------------
 
 MPS_DIR := src/mps
 MPS_SRC := $(MPS_DIR)/mps_kernels.cpp
@@ -48,9 +49,9 @@ $(MPS_LIB): $(MPS_SRC)
 clean-mps:
 	rm -f $(MPS_LIB) $(MPS_DIR)/*.o
 
-# ============================================================
-# Stabilizer backend — Member B
-# ============================================================
+# ------------------------------------------------------------
+# Stabilizer backend
+# ------------------------------------------------------------
 
 STAB_SRC := src/stabilizer/stabilizer.cpp
 STAB_LIB := src/stabilizer/libstabilizer.so
@@ -63,9 +64,9 @@ $(STAB_LIB): $(STAB_SRC)
 clean-stabilizer:
 	rm -f $(STAB_LIB)
 
-# ============================================================
-# Statevector backend — Member A
-# ============================================================
+# ------------------------------------------------------------
+# Statevector backend
+# ------------------------------------------------------------
 
 cpu:
 	$(MAKE) -C src/statevector -f Makefile \
@@ -91,9 +92,9 @@ clean-statevector:
 		$(MAKE) -C src/statevector -f Makefile.cuda clean; \
 	fi
 
-# ============================================================
-# Decision Diagram (DD) backend — Member D
-# ============================================================
+# ------------------------------------------------------------
+# Decision Diagram backend
+# ------------------------------------------------------------
 
 DD_SRC := src/dd/dd_core.cpp
 DD_LIB := backends/libddcore.so
@@ -107,9 +108,9 @@ $(DD_LIB): $(DD_SRC)
 clean-dd:
 	rm -f $(DD_LIB)
 
-# ============================================================
-# Correctness tests
-# ============================================================
+# ------------------------------------------------------------
+# Tests
+# ------------------------------------------------------------
 
 test: test-mps test-stabilizer test-statevector test-dd
 
@@ -126,8 +127,8 @@ test-dd: $(DD_LIB)
 	$(PYTHON) -m unittest tests_dd.py -v
 	$(PYTHON) harness.py --backend dd
 
-# ============================================================
+# ------------------------------------------------------------
 # Cleanup
-# ============================================================
+# ------------------------------------------------------------
 
 clean: clean-mps clean-stabilizer clean-statevector clean-dd
