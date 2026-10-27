@@ -1,4 +1,3 @@
-```makefile
 # COL8422 Quantum Computing Systems — Part 1
 # Root Makefile: MPS, Statevector, Stabilizer, and DD backends
 
@@ -131,4 +130,3 @@ test-dd: $(DD_LIB)
 # ============================================================
 
 clean: clean-mps clean-stabilizer clean-statevector clean-dd
-```
