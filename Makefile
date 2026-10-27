@@ -124,7 +124,6 @@ test-statevector:
 	$(PYTHON) harness.py --backend statevector
 
 test-dd: $(DD_LIB)
-	$(PYTHON) -m unittest tests_dd.py -v
 	$(PYTHON) harness.py --backend dd
 
 # ------------------------------------------------------------

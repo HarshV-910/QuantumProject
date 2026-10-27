@@ -1,6 +1,0 @@
-scipy
-matplotlib
-numpy
-qiskit
-qiskit-aer
-pybind11
