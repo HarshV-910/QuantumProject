@@ -116,7 +116,7 @@ def _reconstruct_sv(sim: QuantumSimulator, n: int) -> np.ndarray:
     """Reconstruct the 2^n statevector from expectation values.
 
     Uses the identity:
-        ρ = (1/2^n) ∑_{P ∈ {I,X,Y,Z}^n} Tr(ρ P) P
+        rho = (1/2^n) ∑_{P ∈ {I,X,Y,Z}^n} Tr(rho P) P
 
     For a pure state |ψ⟩, amplitude recovery requires more than just diagonal
     elements.  We use a direct shortcut: measure ⟨P⟩ for every n-qubit Pauli
