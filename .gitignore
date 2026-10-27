@@ -1,0 +1,11 @@
+# Python generated files
+__pycache__/
+*.py[cod]
+.venv/
+
+# Compiled C++ artifacts
+*.o
+*.so
+
+# Generated benchmark outputs
+results.csv
