@@ -27,6 +27,7 @@ all: mps stabilizer statevector dd
 
 setup:
 	$(PIP) install -r requirements.txt
+	$(PIP) install pybind11
 
 check:
 	$(PYTHON) -c "import numpy, qiskit, qiskit_aer; print('Python dependencies OK')"
