@@ -1,18 +1,11 @@
+```makefile
 # COL8422 Quantum Computing Systems — Part 1
-# Root Makefile for all four simulator backends.
-#
-# Usage:
-#   make              Build all backends
-#   make mps          Build MPS backend
-#   make stabilizer   Build stabilizer backend
-#   make statevector  Build statevector backend
-#   make dd           Build decision-diagram backend
-#   make test         Run correctness tests for all backends
-#   make clean        Remove generated build artifacts
+# Root Makefile: MPS, Statevector, Stabilizer, and DD backends
 
 PYTHON ?= python3
 CXX ?= g++
 NVCC ?= nvcc
+PIP := $(PYTHON) -m pip
 
 CXXFLAGS ?= -O3 -std=c++17 -Wall -Wextra -fPIC
 LDFLAGS ?= -shared
@@ -21,11 +14,23 @@ LDFLAGS ?= -shared
 # Default target
 # ============================================================
 
-.PHONY: all mps stabilizer statevector dd cpu cuda
+.PHONY: all setup check
+.PHONY: mps stabilizer statevector dd cpu cuda
 .PHONY: test test-mps test-stabilizer test-statevector test-dd
 .PHONY: clean clean-mps clean-stabilizer clean-statevector clean-dd
+.PHONY: clean-statevector
 
 all: mps stabilizer statevector dd
+
+# ============================================================
+# Environment setup and dependency checks
+# ============================================================
+
+setup:
+	$(PIP) install -r requirements.txt
+
+check:
+	$(PYTHON) -c "import numpy, qiskit, qiskit_aer; print('Python dependencies OK')"
 
 # ============================================================
 # MPS backend — Member C
@@ -66,7 +71,6 @@ cpu:
 	$(MAKE) -C src/statevector -f Makefile \
 		PYTHON="$(PYTHON)" CXX="$(CXX)"
 
-# Build CUDA support only when the CUDA Makefile and compiler exist.
 cuda:
 	@if [ -f src/statevector/Makefile.cuda ] && \
 	   command -v $(NVCC) >/dev/null 2>&1; then \
@@ -93,11 +97,12 @@ clean-statevector:
 
 DD_SRC := src/dd/dd_core.cpp
 DD_LIB := backends/libddcore.so
+DD_CXXFLAGS ?= -O1 -std=c++17 -Wall -Wextra -fPIC
 
 dd: $(DD_LIB)
 
 $(DD_LIB): $(DD_SRC)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
+	$(CXX) $(DD_CXXFLAGS) $(LDFLAGS) -o $@ $<
 
 clean-dd:
 	rm -f $(DD_LIB)
@@ -117,11 +122,13 @@ test-stabilizer:
 test-statevector:
 	$(PYTHON) harness.py --backend statevector
 
-test-dd:
+test-dd: $(DD_LIB)
+	$(PYTHON) -m unittest tests_dd.py -v
 	$(PYTHON) harness.py --backend dd
 
 # ============================================================
-# Clean generated build artifacts
+# Cleanup
 # ============================================================
 
 clean: clean-mps clean-stabilizer clean-statevector clean-dd
+```
