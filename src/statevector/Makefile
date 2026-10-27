@@ -1,19 +1,27 @@
+CXX ?= g++
+PYTHON ?= python3
 
-CXX = g++
-PYTHON = python
+PYBIND_INCLUDES := $(shell $(PYTHON) -m pybind11 --includes)
+EXT_SUFFIX := $(shell $(PYTHON) -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so')")
+PYTHON_VERSION := $(shell $(PYTHON) -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 
-PYBIND_INCLUDES = $(shell $(PYTHON) -m pybind11 --includes)
-PY_EXT_SUFFIX = $(shell $(PYTHON) -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.pyd')")
+TARGET := ../../backends/_statevector$(EXT_SUFFIX)
+SOURCES := statevector.cpp bindings.cpp
+HEADERS := statevector.hpp
 
-TARGET = ../../backends/_statevector$(PY_EXT_SUFFIX)
-SOURCES = statevector.cpp bindings.cpp
+CXXFLAGS ?= -O3
+CXXFLAGS += -shared -std=c++17 -fPIC
+
+.PHONY: all clean FORCE
 
 all: $(TARGET)
 
-$(TARGET): $(SOURCES) statevector.hpp
-	$(CXX) -O3 -shared -std=c++17 -fPIC $(PYBIND_INCLUDES) $(SOURCES) -o $(TARGET)
+FORCE:
+
+$(TARGET): $(SOURCES) $(HEADERS) FORCE
+	@mkdir -p ../../backends
+	@echo "Building CPU backend with Python $(PYTHON_VERSION)"
+	$(CXX) $(CXXFLAGS) $(PYBIND_INCLUDES) $(SOURCES) -o $(TARGET)
 
 clean:
-	rm -f $(TARGET)
-
-.PHONY: all clean
+	rm -f ../../backends/_statevector*.so
