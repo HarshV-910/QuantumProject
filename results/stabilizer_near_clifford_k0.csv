@@ -1,0 +1,19 @@
+backend,circuit,n,gates,time_s,status,qiskit_time_s,qiskit_status
+stabilizer,near_clifford_k0,4,100,0.0001364210002066102,ok,0.009630169000956812,ok
+stabilizer,near_clifford_k0,6,168,0.00038747399958083406,ok,0.004937625999446027,ok
+stabilizer,near_clifford_k0,8,288,0.0005993699996906798,ok,0.008672672998727649,ok
+stabilizer,near_clifford_k0,10,440,0.0008575150004617171,ok,0.012520959000539733,ok
+stabilizer,near_clifford_k0,12,624,0.001152662000095006,ok,0.01844019300006039,ok
+stabilizer,near_clifford_k0,14,840,0.00150241399933293,ok,0.04679579700132308,ok
+stabilizer,near_clifford_k0,16,1088,0.0020173020002403064,ok,0.10742232300071919,ok
+stabilizer,near_clifford_k0,18,1368,0.002871400000003632,ok,0.152787951999926,ok
+stabilizer,near_clifford_k0,20,1680,0.0034554750000097556,ok,0.36362831399856077,ok
+stabilizer,near_clifford_k0,24,2400,0.003982091999205295,ok,4.079264816000432,ok
+stabilizer,near_clifford_k0,28,3248,0.00419176399918797,ok,nan,qiskit failed (memory)
+stabilizer,near_clifford_k0,32,4224,0.00533021899900632,ok,nan,skipped
+stabilizer,near_clifford_k0,36,5328,0.006807294001191622,ok,nan,skipped
+stabilizer,near_clifford_k0,40,6560,0.008314957000038703,ok,nan,skipped
+stabilizer,near_clifford_k0,50,10200,0.01525116899938439,ok,nan,skipped
+stabilizer,near_clifford_k0,63,16128,0.023061232999680215,ok,nan,skipped
+stabilizer,near_clifford_k0,79,25280,0.03626846399856731,ok,nan,skipped
+stabilizer,near_clifford_k0,99,39600,0.05629423699974723,ok,nan,skipped
